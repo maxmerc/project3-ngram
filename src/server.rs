@@ -19,7 +19,32 @@ const WORKERS: usize = 16;
 // and then creating the appropriate response and turning it into bytes which are sent to along
 // the stream by calling the `write_all` method.
 fn process_message(state: Arc<ServerState>, request: Request, mut stream: TcpStream) {
-    todo!()
+    let response = match request {
+        Request::Publish { doc } => {
+            // Publish the document and get its ID
+            let id = state.database.publish(doc);
+            Response::PublishSuccess(id)
+        }
+        Request::Search { word } => {
+            // Search for documents containing the word
+            let doc_ids = state.database.search(&word);
+            Response::SearchSuccess(doc_ids)
+        }
+        Request::Retrieve { id } => {
+            // Retrieve the document with the given ID
+            match state.database.retrieve(id) {
+                Some(doc) => Response::RetrieveSuccess(doc),
+                None => Response::Failure
+            }
+        }
+    };
+
+    // Send the response using the to_bytes() method
+    if let Ok(()) = stream.write_all(&response.to_bytes()) {
+        let _ = stream.flush();
+    } else {
+        eprintln!("Failed to send response to client");
+    }
 }
 
 /// A struct that contains the state of the server
@@ -48,7 +73,9 @@ impl Server {
     // TODO:
     // Create a new server by using the `ServerState::new` function
     pub fn new() -> Self {
-        todo!()
+        Self {
+            state: Arc::new(ServerState::new()),
+        }
     }
 
     // TODO:
@@ -67,7 +94,47 @@ impl Server {
     // `ServerState` to see if the server has been stopped. If it has, you should break out of the
     // loop and return.
     fn listen(&self, port: u16) {
-        todo!()
+        // Bind to the specified port
+        let listener = match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(listener) => listener,
+            Err(e) => {
+                eprintln!("Failed to bind to port {}: {}", port, e);
+                return;
+            }
+        };
+
+        println!("Server listening on port {}", port);
+
+        while !self.state.is_stopped.load(Ordering::SeqCst) {
+            match listener.accept() {
+                Ok((stream, addr)) => {
+                    println!("New connection from: {}", addr);
+                    let state = Arc::clone(&self.state);
+
+                    self.state.pool.execute(move || {
+                        let mut stream = stream;
+                        // Use the Request::from_bytes to deserialize the request
+                        match Request::from_bytes(&stream) {
+                            Some(request) => {
+                                process_message(state, request, stream);
+                            }
+                            None => {
+                                eprintln!("Failed to parse request from {}", addr);
+                                // Send failure response in case of invalid request
+                                let failure_response = Response::Failure;
+                                let _ = stream.write_all(&failure_response.to_bytes());
+                                let _ = stream.flush();
+                            }
+                        }
+                    });
+                }
+                Err(e) => {
+                    eprintln!("Failed to accept connection: {}", e);
+                    // Small sleep to prevent tight loop on error
+                    thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        }
     }
 
     // This function has already been partially completed for you
@@ -86,7 +153,10 @@ impl Server {
         }
 
         // TODO: Call the listen function and then loop (doing nothing) until the server has been stopped
-        todo!()
+        self.listen(port);
+        while !self.state.is_stopped.load(Ordering::SeqCst) {
+            thread::sleep(std::time::Duration::from_millis(100));
+        }
     }
     pub fn stop(&self) {
         self.state.is_stopped.store(true, Ordering::SeqCst);

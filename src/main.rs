@@ -68,37 +68,44 @@ fn main() {
             server_port,
             operation,
         } => {
+            let client = Client::new(&server_address, server_port);
             match operation {
                 ClientCommand::Publish { path } => {
                     println!(
                         "Connecting to {}:{} to publish document at path: {}",
                         server_address, server_port, path
                     );
-                    // Call the publish function in Client (or use unimplemented!())
-                    unimplemented!("Client publish functionality");
+                    match client.publish_from_path(&path) {
+                        Some(response) => println!("Response: {:?}", response),
+                        None => eprintln!("Failed to publish document"),
+                    }
                 }
                 ClientCommand::Search { word } => {
                     println!(
                         "Connecting to {}:{} to search for word: {}",
                         server_address, server_port, word
                     );
-                    // Call the search function in Client (or use unimplemented!())
-                    unimplemented!("Client search functionality");
+                    match client.search(&word) {
+                        Some(response) => println!("Response: {:?}", response),
+                        None => eprintln!("Failed to search document archive"),
+                    }
                 }
                 ClientCommand::Retrieve { document_id } => {
                     println!(
                         "Connecting to {}:{} to retrieve document with ID: {}",
                         server_address, server_port, document_id
                     );
-                    // Call the retrieve function in Client (or use unimplemented!())
-                    unimplemented!("Client retrieve functionality");
+                    match client.retrieve(document_id) {
+                        Some(response) => println!("Response: {:?}", response),
+                        None => eprintln!("Failed to retrieve document"),
+                    }
                 }
             }
         }
         Command::Server { listen_port } => {
             println!("Starting server and listening on port: {}", listen_port);
-            // Call the server start function (or use unimplemented!())
-            unimplemented!("Server functionality");
+            let server = Server::new();
+            server.run(listen_port);
         }
     }
 }
