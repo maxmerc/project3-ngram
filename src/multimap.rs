@@ -14,7 +14,10 @@ impl<K: Hash + Eq, V> ConcurrentMultiMap<K, V> {
     // TODO:
     // Create a new empty ConcurrentMultiMap with the given number of buckets.
     pub fn new(bucket_count: usize) -> Self {
-        todo!()
+        let buckets = (0..bucket_count)
+            .map(|_| RwLock::new(LinkedList::new()))
+            .collect();
+        ConcurrentMultiMap { buckets }
     }
 }
 
@@ -26,7 +29,21 @@ impl<K: Hash + Eq, V: Clone + Eq> ConcurrentMultiMap<K, V> {
     // key-values pair already exists. If it does, return early. Otherwise, add the key-value pair
     // to the linked list.
     pub fn set(&self, key: K, value: V) {
-        todo!()
+        // Hash the key and find the corresponding bucket index.
+        let bucket_index = self.get_bucket_index(&key);
+
+        // Acquire a write lock on the bucket.
+        let mut bucket = self.buckets[bucket_index].write().unwrap();
+
+        // Check if the key-value pair already exists; if not, insert it.
+        for (existing_key, existing_value) in bucket.iter() {
+            if existing_key == &key && existing_value == &value {
+                return;
+            }
+        }
+
+        // Insert the new key-value pair if it wasn't found.
+        bucket.push_back((key, value));
     }
 
     // TODO:
@@ -39,7 +56,34 @@ impl<K: Hash + Eq, V: Clone + Eq> ConcurrentMultiMap<K, V> {
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        todo!()
+        // Hash the key and find the corresponding bucket index.
+        let bucket_index = self.get_bucket_index(key);
+
+        // Acquire a read lock on the bucket.
+        let bucket = self.buckets[bucket_index].read().unwrap();
+
+        // Collect and return all values associated with the key.
+        bucket
+            .iter()
+            .filter_map(|(existing_key, value)| {
+                if existing_key.borrow() == key {
+                    Some(value.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    // Helper function to calculate the bucket index for a given key.
+    fn get_bucket_index<Q>(&self, key: &Q) -> usize
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        (hasher.finish() as usize) % self.buckets.len()
     }
 }
 
